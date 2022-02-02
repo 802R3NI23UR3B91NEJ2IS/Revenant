@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Terminal=false
+Exec=/bin/python3 /home/eternal_blue/.Revenant_source_code/INT.py
+Name=Revenant App
+Comment=This application offers encryption/decryption protocols..
+GenericName=File Encrypter
+Icon=/home/eternal_blue/.Revenant_source_code/Revenant_icon.png
+Categories=Utility;
