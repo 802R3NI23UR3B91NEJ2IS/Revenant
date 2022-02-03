@@ -1,5 +1,5 @@
 #importing required modules and setting needed variables
-# all exit codes for modules will use integers unless needed
+# all exit codes for modules will use integers unless required
 from Crypto.Cipher import AES
 from Crypto.Protocol.KDF import PBKDF2
 from getpass import getuser
