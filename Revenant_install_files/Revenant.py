@@ -1,17 +1,15 @@
 #importing required modules and setting needed variables
 # all exit codes for modules will use integers unless needed
 from Crypto.Cipher import AES
-import json
 from Crypto.Protocol.KDF import PBKDF2
 from getpass import getuser
 import PySimpleGUI as sg
 import hashlib as hash
 import os
-import datetime as dt
-import time
-import gc
-gc.enable()
-LAYOUT_CYCLE_VAR = 0; logged_in = False; count = 0; alert = 0
+import datetime as dt # for logging dats
+from time import sleep # for delays
+from gc import enable # enabling garbage collection
+enable()
 
 
 # added a guard clause function
@@ -92,7 +90,7 @@ def add_log(mode=str, username=str, file_name=str, encrypted=bool) -> int:
                 elif encrypted is False:
                     string = "decrypted"
                 # writing
-                file.write("Vault: Vault was: {} at: {} UTC.\n".format(string, time))
+                file.write("Vault: Vault was: {} at: {} UTC.\n".format(string, time_))
             return 0
         elif mode == "c":
             # logging password changes
@@ -106,13 +104,14 @@ def add_log(mode=str, username=str, file_name=str, encrypted=bool) -> int:
         file.write("userLog recreated due to FileNotFoundError.\n")
         file.close()
         # sleep so it feels like it did something
-        time.sleep(2)
+        sleep(2)
         sg.popup_auto_close("Rebuild complete.", font="Helvetica", non_blocking=True)
         return 1
 
 
 # Making a random hash creation module
 def rand_hash() -> str:
+    "a function to generate random hex-encoded hashes."
     rand_bytes = os.urandom(32)
     rand_hash = hash.sha256(rand_bytes)
     return_value = rand_hash.hexdigest()
@@ -221,7 +220,7 @@ def Vault_encrypt(password=str, username=str) -> int:
             os.mkdir("/home/{}/Vault/Images/".format(username))
             os.mkdir("/home/{}/Vault/Text Files/".format(username))
             os.mkdir("/home/{}/Vault/Other/".format(username))
-            time.sleep(2)
+            sleep(2)
             sg.popup_auto_close("Rebuild complete; Vault folder returned to install default.", font="Helvetica", non_blocking=True)
             return 1
         except FileExistsError:
@@ -260,7 +259,7 @@ def Vault_decrypt(password=str, username=str) -> int:
             os.mkdir("/home/{}/Vault/Images".format(username))
             os.mkdir("/home/{}/Vault/Text Files".format(username))
             os.mkdir("/home/{}/Vault/Other".format(username))
-            time.sleep(2)
+            sleep(2)
             sg.popup_auto_close("Rebuild complete; Vault folder returned to install default.", font="Helvetica", non_blocking=True)
             return 1
         except FileExistsError:
@@ -348,7 +347,7 @@ def logout_date_Script(username=str) -> int:
 
 
 # Creating the main login sequence.
-def login_sequence(password=str, username=str, count=int):
+def login_sequence(password=str, username=str, count=int) -> int:
     """
     Main login sequence. Runs once.
     code of 0: no errors detected.
@@ -356,11 +355,6 @@ def login_sequence(password=str, username=str, count=int):
     error code of 2: given password did not match cached password.
     error code of 3: password or username was not given.
     """
-    global logged_in
-    # checking if the user is logged in. killing app if yes
-    if logged_in is True:
-        sg.popup_error("I dunno how you did this.\nYou somehow clicked on the login button after you logged in, even though\nthere was no programmed way to do that.\nContact me I guess, w.garrioch456@gmail.com\nThe program will now quit, since I do not know how this behaviour will affect its workings.")
-        quit()
     # checking if five incorrect attempts to login have occurred.
     if count == 5:
         sg.popup_auto_close("Invalid credentials entered at least 5 times. Exiting application...", font="Helvetica")
@@ -394,7 +388,7 @@ def login_sequence(password=str, username=str, count=int):
 # creating the password change module yaaaaaaaaay
 def change_password(old_password=str, new_password=str, username=str):
     """
-    Module for changing password.
+    Module for changing password. Can return either an integer or string.
     String returned: There were no error codes.
     Error code of 1: Old password or new password was not supplied.
     Error code of 2: Old password was not correct.
@@ -492,13 +486,15 @@ def audit_userlog_function(mode=str, username=str) -> int:
 
 # run a check at runtime to see how large the Userlog is. if it's over 64 KB, autoremove
 def Auto_edit():
-    global alert
+    """
+    a simple function that runs at runtime to make sure the userlog file does not get too large.
+    """
     assumed_username = getuser()
     try:
         size = os.path.getsize("/home/{}/Revenant_source_code/userLog.txt".format(assumed_username))
         if size >= 64000:
             audit_userlog_function("a", assumed_username)
-            alert = 1
+            return 1
     except FileNotFoundError:
         pass
 
@@ -579,145 +575,153 @@ layout = [
 window = sg.Window("Revenant Version 1.0.0", layout, element_justification="C").Finalize()
 window.Maximize()
 
-username = "0"; password = "0"
 # Creating the loop to check for events and values
-while True:
-    event, values = window.read()
-    if event in (None, "Close Window", "Close", "logout", "Close_Audit"):
-        logout_date_Script(username)
-        quit()
-    if alert == 1:
-        sg.popup_auto_close("userLog capacity reached. userLog cleared.", font="Helvetica", non_blocking=True)
-    if event == "Ok":
-        username = values["username"]
-        password = values["password"]
-        exit_code = login_sequence(password, username, count)
-        if exit_code ==  0:
-            LAYOUT_CYCLE_VAR = 1
-        elif exit_code == 1:
-            sg.popup_auto_close("The given username is not a valid username.", font="Helvetica", non_blocking=True)
-        elif exit_code == 2:
-            sg.popup_auto_close("Incorrect credentials.", font="Helvetica", non_blocking=True)
-            count += 1
-        elif exit_code == 3:
-            sg.popup_auto_close("Password or username was not provided.", font="Helvetica", non_blocking=True)
-    if LAYOUT_CYCLE_VAR == 1:
-        window[f"Login_Layout"].update(visible=False)
-        window[f"Logged_Layout"].update(visible=True)
-        LAYOUT_CYCLE_VAR = 2
-    if event == "file_hub":
-        window[f"Logged_Layout"].update(visible=False)
-        window[f"File_hub_layout"].update(visible=True)
-    elif event == "password_change":
-        window[f"Logged_Layout"].update(visible=False)
-        window[f"Change_pass_layout"].update(visible=True)
-    elif event == "back_pass":
-        window[f"Change_pass_layout"].update(visible=False)
-        window[f"Logged_Layout"].update(visible=True)
-    elif event == "back":
-        window[f"File_hub_layout"].update(visible=False)
-        window[f"Logged_Layout"].update(visible=True)
-    elif event == "Intiate_audit":
-        window[f"Logged_Layout"].update(visible=False)
-        window[f"File_hub_layout"].update(visible=False)
-        window[f"userLog_audit_layout"].update(visible=True)
-    elif event == "audit_return":
-        window[f"File_hub_layout"].update(visible=True)
-        window[f"userLog_audit_layout"].update(visible=False)
-    elif event == "file_encrypt":
-        window[f"Logged_Layout"].update(visible=False)
-        # getting needed variables
-        salt = os.urandom(16); key = PBKDF2(password, salt, dkLen=32); file_name = sg.popup_get_file("Please select a file for encryption.", font="Helvetica")
-        exit_code = encrypt_file_function(key, salt, file_name, username, single=True)
-        if exit_code == 0:
-            sg.popup_auto_close("Encryption successful; file: " + file_name + " successfully encrypted.", font="Helvetica", non_blocking=True)
-        elif exit_code == 1:
-            sg.popup_auto_close("File encryption cancelled.", font="Helvetica", non_blocking=True)
-        elif exit_code == 2:
-            sg.popup_auto_close("The application does not have the required permissions to access the file.", font="Helvetica", non_blocking=True)
-        elif exit_code == 3:
-            sg.popup_auto_close("The given file is not a valid path.", font="Helvetica", non_blocking=True)
-        elif exit_code == 4:
-            sg.popup_auto_close("The file was hidden and will not be encrypted.", font="Helvetica", non_blocking=True)
-        elif exit_code == 5:
-            sg.popup_auto_close("The file was already encrypted.", font="Helvetica", non_blocking=True)
-    elif event == "file_decrypt":
-        window[f"Logged_Layout"].update(visible=False)
-        file_name = sg.popup_get_file("Please select a file for decryption.", font="Helvetica")
-        exit_code = decrypt_file_function(password, file_name, username, single=True)
-        if exit_code == 0:
-            sg.popup_auto_close("Decryption successful; file: " + file_name + " successfully decrypted.", font="Helvetica", non_blocking=True)
-        elif exit_code == 1:
-            sg.popup_auto_close("File decryption cancelled.", font="Helvetica", non_blocking=True)
-        elif exit_code == 2:
-            sg.popup_auto_close("The application does not have the required permissions to access the file.", font="Helvetica", non_blocking=True)
-        elif exit_code == 3:
-            sg.popup_auto_close("The given file path is not a valid path.", font="Helvetica", non_blocking=True)
-        elif exit_code == 6:
-            sg.popup_auto_close("The given file was already decrypted.", font="Helvetica", non_blocking=True)
-        elif exit_code == 7:
-            sg.popup_auto_close("The given file was encrypted with a different key. The file was unable to be decrypted with the current credentials.", font="Helvetica", non_blocking=True)
-    elif event == "folder_encrypt":
-        window[f"Logged_Layout"].update(visible=False)
-        file_name = sg.popup_get_folder("Please select a folder for encryption.")
-        exit_code = folder_encryption_function(password, file_name)
-        if exit_code == 0:
-            sg.popup_auto_close("Folder encryption successful; folder:" +file_name+ " successfully encrypted", font="Helvetica", non_blocking=True)
-        elif exit_code == 1:
-            sg.popup_auto_close("Folder encryption cancelled.", font="Helvetica", non_blocking=True)
-        elif exit_code == 2:
-            sg.popup_auto_close("The given folder path does not exist.", font="Helvetica", non_blocking=True)
-    elif event == "folder_decrypt":
-        window[f"Logged_Layout"].update(visible=False)
-        file_name = sg.popup_get_folder("Please select a folder for encryption.")
-        exit_code = folder_decryption_function(password, file_name)
-        if exit_code == 0:
-            sg.popup_auto_close("Folder decryption successful; folder:" +file_name+ " successfully decrypted", font="Helvetica", non_blocking=True)
-        elif exit_code == 1:
-            sg.popup_auto_close("Folder decryption cancelled.", font="Helvetica", non_blocking=True)
-        elif exit_code == 2:
-            sg.popup_auto_close("The given folder path does not exist.", font="Helvetica", non_blocking=True)
-        elif exit_code == 3:
-            sg.popup_auto_close("Some files contained in the given folder were encrypted with a different key and were ignored.", font="Helvetica", non_blocking=True)
-    elif event == "vault_encrypt":
-        window[f"Logged_Layout"].update(visible=False)
-        exit_code = Vault_encrypt(password, username)
-        if exit_code == 0:
-            sg.popup_auto_close("Encryption successful; Vault is now encrypted.", font="Helvetica", non_blocking=True)
-    elif event == "vault_decrypt":
-        exit_code = Vault_decrypt(password, username)
-        if exit_code == 0:
-            sg.popup_auto_close("Decryption successful; Vault is now decrypted.", font="Helvetica", non_blocking=True)
-        elif exit_code == 2:
-            sg.popup_auto_close("Some files contained in the Vault folder were encrypted with different keys and were ignored.", font="Helvetica", non_blocking=True)
-    elif event == "OK_pass":
-        window[f"Logged_Layout"].update(visible=False)
-        old_pass = values["old_password"]
-        new_pass = values["new_password"]
-        exit_code = change_password(old_pass, new_pass, username)
-        if exit_code == 1:
-            sg.popup_error("You did not give either your old password or new password. Password change automatically cancelled.", font="Helvetica")
-        elif exit_code == 2:
-            sg.popup_auto_close("The old password that was entered is wrong. Password change automatically cancelled.", font="Helvetica", non_blocking=True)
-        else:
-            sg.popup_auto_close("Password Change successful.", font="Helvetica", non_blocking=True)
-            password = exit_code
-    elif event == "single_file_log_audit":
-        window[f"Logged_Layout"].update(visible=False)
-        exit_code = audit_userlog_function("s", username)
-        if exit_code == 0:
-            sg.popup_auto_close("userLog audit completed. All Singular File log instances have been deleted.", font="Helvetica", non_blocking=True)
-    elif event == "folder_logs_audit":
-        window[f"Logged_Layout"].update(visible=False)
-        exit_code = audit_userlog_function("f", username)
-        sg.popup_auto_close("userLog audit completed. All Folder log instances have been deleted.", font="Helvetica", non_blocking=True)
-    elif event == "vault_log_audit":
-        window[f"Logged_Layout"].update(visible=False)
-        exit_code = audit_userlog_function("v", username)
-        if exit_code == 0:
-            sg.popup_auto_close("userLog audit completed. All Vault log instances have been deleted.", font="Helvetica", non_blocking=True)
-    elif event == "Clear_userlog":
-        window[f"Logged_Layout"].update(visible=False)
-        exit_code = audit_userlog_function("a", username)
-        if exit_code == 0:
-            sg.popup_auto_close("userLog audit completed. All log instances have been deleted.", font="Helvetica", non_blocking=True)
+def main():
+    """
+    The main function of the application.
+    """
+    # setting needed variables
+    username = "0"; password = "0"; count = 0; LAYOUT_CYCLE_VAR = 0; logged_in = False; count = 0; alert = Auto_edit()
+    while True:
+        event, values = window.read()
+        if event in (None, "Close Window", "Close", "logout", "Close_Audit"):
+            logout_date_Script(username)
+            quit()
+        if alert == 1:
+            sg.popup_auto_close("userLog capacity reached. userLog cleared.", font="Helvetica", non_blocking=True)
+        if event == "Ok" and logged_in is False:
+            username = values["username"]
+            password = values["password"]
+            exit_code = login_sequence(password, username, count)
+            if exit_code ==  0:
+                LAYOUT_CYCLE_VAR = 1
+                logged_in = True
+            elif exit_code == 1:
+                sg.popup_auto_close("The given username is not a valid username.", font="Helvetica", non_blocking=True)
+            elif exit_code == 2:
+                sg.popup_auto_close("Incorrect credentials.", font="Helvetica", non_blocking=True)
+                count += 1
+            elif exit_code == 3:
+                sg.popup_auto_close("Password or username was not provided.", font="Helvetica", non_blocking=True)
+        if LAYOUT_CYCLE_VAR == 1:
+            window[f"Login_Layout"].update(visible=False)
+            window[f"Logged_Layout"].update(visible=True)
+            LAYOUT_CYCLE_VAR = 2
+        if event == "file_hub":
+            window[f"Logged_Layout"].update(visible=False)
+            window[f"File_hub_layout"].update(visible=True)
+        elif event == "password_change":
+            window[f"Logged_Layout"].update(visible=False)
+            window[f"Change_pass_layout"].update(visible=True)
+        elif event == "back_pass":
+            window[f"Change_pass_layout"].update(visible=False)
+            window[f"Logged_Layout"].update(visible=True)
+        elif event == "back":
+            window[f"File_hub_layout"].update(visible=False)
+            window[f"Logged_Layout"].update(visible=True)
+        elif event == "Intiate_audit":
+            window[f"Logged_Layout"].update(visible=False)
+            window[f"File_hub_layout"].update(visible=False)
+            window[f"userLog_audit_layout"].update(visible=True)
+        elif event == "audit_return":
+            window[f"File_hub_layout"].update(visible=True)
+            window[f"userLog_audit_layout"].update(visible=False)
+        elif event == "file_encrypt":
+            window[f"Logged_Layout"].update(visible=False)
+            # getting needed variables
+            salt = os.urandom(16); key = PBKDF2(password, salt, dkLen=32); file_name = sg.popup_get_file("Please select a file for encryption.", font="Helvetica")
+            exit_code = encrypt_file_function(key, salt, file_name, username, single=True)
+            if exit_code == 0:
+                sg.popup_auto_close("Encryption successful; file: " + file_name + " successfully encrypted.", font="Helvetica", non_blocking=True)
+            elif exit_code == 1:
+                sg.popup_auto_close("File encryption cancelled.", font="Helvetica", non_blocking=True)
+            elif exit_code == 2:
+                sg.popup_auto_close("The application does not have the required permissions to access the file.", font="Helvetica", non_blocking=True)
+            elif exit_code == 3:
+                sg.popup_auto_close("The given file is not a valid path.", font="Helvetica", non_blocking=True)
+            elif exit_code == 4:
+                sg.popup_auto_close("The file was hidden and will not be encrypted.", font="Helvetica", non_blocking=True)
+            elif exit_code == 5:
+                sg.popup_auto_close("The file was already encrypted.", font="Helvetica", non_blocking=True)
+        elif event == "file_decrypt":
+            window[f"Logged_Layout"].update(visible=False)
+            file_name = sg.popup_get_file("Please select a file for decryption.", font="Helvetica")
+            exit_code = decrypt_file_function(password, file_name, username, single=True)
+            if exit_code == 0:
+                sg.popup_auto_close("Decryption successful; file: " + file_name + " successfully decrypted.", font="Helvetica", non_blocking=True)
+            elif exit_code == 1:
+                sg.popup_auto_close("File decryption cancelled.", font="Helvetica", non_blocking=True)
+            elif exit_code == 2:
+                sg.popup_auto_close("The application does not have the required permissions to access the file.", font="Helvetica", non_blocking=True)
+            elif exit_code == 3:
+                sg.popup_auto_close("The given file path is not a valid path.", font="Helvetica", non_blocking=True)
+            elif exit_code == 6:
+                sg.popup_auto_close("The given file was already decrypted.", font="Helvetica", non_blocking=True)
+            elif exit_code == 7:
+                sg.popup_auto_close("The given file was encrypted with a different key. The file was unable to be decrypted with the current credentials.", font="Helvetica", non_blocking=True)
+        elif event == "folder_encrypt":
+            window[f"Logged_Layout"].update(visible=False)
+            file_name = sg.popup_get_folder("Please select a folder for encryption.")
+            exit_code = folder_encryption_function(password, file_name)
+            if exit_code == 0:
+                sg.popup_auto_close("Folder encryption successful; folder:" +file_name+ " successfully encrypted", font="Helvetica", non_blocking=True)
+            elif exit_code == 1:
+                sg.popup_auto_close("Folder encryption cancelled.", font="Helvetica", non_blocking=True)
+            elif exit_code == 2:
+                sg.popup_auto_close("The given folder path does not exist.", font="Helvetica", non_blocking=True)
+        elif event == "folder_decrypt":
+            window[f"Logged_Layout"].update(visible=False)
+            file_name = sg.popup_get_folder("Please select a folder for encryption.")
+            exit_code = folder_decryption_function(password, file_name)
+            if exit_code == 0:
+                sg.popup_auto_close("Folder decryption successful; folder:" +file_name+ " successfully decrypted", font="Helvetica", non_blocking=True)
+            elif exit_code == 1:
+                sg.popup_auto_close("Folder decryption cancelled.", font="Helvetica", non_blocking=True)
+            elif exit_code == 2:
+                sg.popup_auto_close("The given folder path does not exist.", font="Helvetica", non_blocking=True)
+            elif exit_code == 3:
+                sg.popup_auto_close("Some files contained in the given folder were encrypted with a different key and were ignored.", font="Helvetica", non_blocking=True)
+        elif event == "vault_encrypt":
+            window[f"Logged_Layout"].update(visible=False)
+            exit_code = Vault_encrypt(password, username)
+            if exit_code == 0:
+                sg.popup_auto_close("Encryption successful; Vault is now encrypted.", font="Helvetica", non_blocking=True)
+        elif event == "vault_decrypt":
+            exit_code = Vault_decrypt(password, username)
+            if exit_code == 0:
+                sg.popup_auto_close("Decryption successful; Vault is now decrypted.", font="Helvetica", non_blocking=True)
+            elif exit_code == 2:
+                sg.popup_auto_close("Some files contained in the Vault folder were encrypted with different keys and were ignored.", font="Helvetica", non_blocking=True)
+        elif event == "OK_pass":
+            window[f"Logged_Layout"].update(visible=False)
+            old_pass = values["old_password"]
+            new_pass = values["new_password"]
+            exit_code = change_password(old_pass, new_pass, username)
+            if exit_code == 1:
+                sg.popup_error("You did not give either your old password or new password. Password change automatically cancelled.", font="Helvetica")
+            elif exit_code == 2:
+                sg.popup_auto_close("The old password that was entered is wrong. Password change automatically cancelled.", font="Helvetica", non_blocking=True)
+            else:
+                sg.popup_auto_close("Password Change successful.", font="Helvetica", non_blocking=True)
+                password = exit_code
+        elif event == "single_file_log_audit":
+            window[f"Logged_Layout"].update(visible=False)
+            exit_code = audit_userlog_function("s", username)
+            if exit_code == 0:
+                sg.popup_auto_close("userLog audit completed. All Singular File log instances have been deleted.", font="Helvetica", non_blocking=True)
+        elif event == "folder_logs_audit":
+            window[f"Logged_Layout"].update(visible=False)
+            exit_code = audit_userlog_function("f", username)
+            sg.popup_auto_close("userLog audit completed. All Folder log instances have been deleted.", font="Helvetica", non_blocking=True)
+        elif event == "vault_log_audit":
+            window[f"Logged_Layout"].update(visible=False)
+            exit_code = audit_userlog_function("v", username)
+            if exit_code == 0:
+                sg.popup_auto_close("userLog audit completed. All Vault log instances have been deleted.", font="Helvetica", non_blocking=True)
+        elif event == "Clear_userlog":
+            window[f"Logged_Layout"].update(visible=False)
+            exit_code = audit_userlog_function("a", username)
+            if exit_code == 0:
+                sg.popup_auto_close("userLog audit completed. All log instances have been deleted.", font="Helvetica", non_blocking=True)
+
+main()
