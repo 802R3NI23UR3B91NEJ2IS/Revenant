@@ -1,12 +1,12 @@
 #importing required modules and setting needed variables
-# all exit codes for modules will use integers unless required
+# all exit codes for modules will use integers unless needed
 from Crypto.Cipher import AES
 from Crypto.Protocol.KDF import PBKDF2
 from getpass import getuser
 import PySimpleGUI as sg
 import hashlib as hash
 import os
-import datetime as dt # for logging dats
+import datetime as dt # for logging dates
 from time import sleep # for delays
 from gc import enable # enabling garbage collection
 enable()
@@ -363,7 +363,7 @@ def login_sequence(password=str, username=str, count=int) -> int:
     if password == "" or username == "":
         return 3
     # checking if user is valid
-    elif os.path.exists("/home/{}".format(username)) is False:
+    elif os.path.exists("/home/{}/".format(username)) is False:
         return 1
     # accessing the password cache and extracting its contents.
     try:
@@ -374,7 +374,7 @@ def login_sequence(password=str, username=str, count=int) -> int:
         quit()
     length = len(contents)
     # getting the hash and salt from cache
-    password_hash = contents[0:length:4]; salt = contents[1,length,4]
+    password_hash = contents[0:length:4]; salt = contents[1:length:4]
     # creating the hash object and comparing
     full_object = password + username.strip() + salt; full_hash = hash.sha256(full_object.encode()); hex_digest = full_hash.hexdigest()
     # returning values
@@ -404,7 +404,7 @@ def change_password(old_password=str, new_password=str, username=str):
         sg.popup_error("Password cache not found. Reinstall with the most recent password and decrypt any encrypted files. This program will now quit.", font='Helvetica')
         quit()
     # getting hash and salt
-    length = len(contents); pass_hash = contents[0:length:4]; salt = contents[1,length,4]
+    length = len(contents); pass_hash = contents[0:length:4]; salt = contents[1:length:4]
     # creating hash object and comparing
     full = old_password + username.strip() + salt; hashed = hash.sha256(full.encode()); hex_string = hashed.hexdigest()
     if hex_string == pass_hash:
@@ -575,6 +575,7 @@ layout = [
 window = sg.Window("Revenant Version 1.0.0", layout, element_justification="C").Finalize()
 window.Maximize()
 
+
 # Creating the loop to check for events and values
 def main():
     """
@@ -662,9 +663,10 @@ def main():
         elif event == "folder_encrypt":
             window[f"Logged_Layout"].update(visible=False)
             file_name = sg.popup_get_folder("Please select a folder for encryption.")
-            exit_code = folder_encryption_function(password, file_name)
+            print (username)
+            exit_code = folder_encryption_function(password, file_name, username)
             if exit_code == 0:
-                sg.popup_auto_close("Folder encryption successful; folder:" +file_name+ " successfully encrypted", font="Helvetica", non_blocking=True)
+                sg.popup_auto_close("Folder encryption successful; folder: {} successfully encrypted".format(file_name), font="Helvetica", non_blocking=True)
             elif exit_code == 1:
                 sg.popup_auto_close("Folder encryption cancelled.", font="Helvetica", non_blocking=True)
             elif exit_code == 2:
@@ -672,7 +674,7 @@ def main():
         elif event == "folder_decrypt":
             window[f"Logged_Layout"].update(visible=False)
             file_name = sg.popup_get_folder("Please select a folder for encryption.")
-            exit_code = folder_decryption_function(password, file_name)
+            exit_code = folder_decryption_function(password, file_name, username)
             if exit_code == 0:
                 sg.popup_auto_close("Folder decryption successful; folder:" +file_name+ " successfully decrypted", font="Helvetica", non_blocking=True)
             elif exit_code == 1:
@@ -723,5 +725,6 @@ def main():
             exit_code = audit_userlog_function("a", username)
             if exit_code == 0:
                 sg.popup_auto_close("userLog audit completed. All log instances have been deleted.", font="Helvetica", non_blocking=True)
+
 
 main()
