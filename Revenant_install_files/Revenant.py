@@ -1,505 +1,568 @@
 #importing required modules and setting needed variables
 # all exit codes for modules will use integers unless needed
+from fileinput import filename
+import os
 from Crypto.Cipher import AES
 from Crypto.Protocol.KDF import PBKDF2
 from getpass import getuser
 import PySimpleGUI as sg
 import hashlib as hash
-import os
 import datetime as dt # for logging dates
 from time import sleep # for delays
 from gc import enable # enabling garbage collection
 enable()
 
 
-# added a guard clause function
-def guard_Clause(Filename=str or None, decrypting=bool) -> int:
+class log:
     """
-    A function to check for various file errors.
-    code of 0: No errors detected.
-    error code of 1: path of file is None. Cancelled encrypt/decrypt cycle.
-    error code of 2: The program does not have the permission to access the file. 
-    error code of 3: The file path is NOT a correct path.
-    error code of 4: File is hidden. Avoiding encryption so you don't accidently break another program.
-    error code of 5: A file encryption marker was detected during encryption.
-    error code of 6: during decryption, file encryption marker was not detected.
+    A class to audit the userLog file and log things such as login/logout dates.
     """
-    # checking if file encryption was cancelled
-    if Filename is None:
-        return 1
-        # checking for Permission errors and seeing if the given file path is usable
-    try:
-        with open(Filename, "rb") as file:
-            magic = file.read(14)
-    except PermissionError:
-        return 2 
-    except FileNotFoundError:
-        return 3
-    if "/." in Filename:
-        return 4
-    # checking if there is a file encryption signature.
-    # if there is and decrypting, return 0
-    if magic == b"E1m%nj2i$bhilj" and decrypting is True:
-        return 0
-    # if there is one and encrypting, return 5
-    if magic == b"E1m%nj2i$bhilj" and decrypting is False:
-        return 5
-    # if there is not one and encrypting, return 0
-    if magic != b"E1m%nj2i$bhilj" and decrypting is False:
-        return 0
-    # if there is not one and decrypting, return 6
-    if magic != b"E1m%nj2i$bhilj" and decrypting is True:
-        return 6
-    pass
 
 
-# added a logger for modules to use
-def add_log(mode=str, username=str, file_name=str, encrypted=bool) -> int:
-    # guard clause
-    if mode is None or username is None or file_name is None:
-        return 1
-    # once again using s for singular, f for folder, v for vault, c for changed password
-    time_ = str(dt.datetime.utcnow())
-    try:
-        #using the same template for different options
-        if mode == "s":
-            with open("/home/{}/Revenant/userLog.txt".format(username) ,'a') as file:
-                # formatting for either encryption/decryption
-                if encrypted is True:
-                    string = "encrypted"
-                elif encrypted is False:
-                    string = "decrypted"
-                # writing
-                file.write("Singular: File: {} was: {} at: {} UTC.\n".format(file_name, string, time_))
-            return 0
-        elif mode == "f":
-            with open("/home/{}/Revenant/userLog.txt".format(username) ,'a') as file:
-                # formatting
-                if encrypted is True:
-                    string = "encrypted"
-                elif encrypted is False:
-                    string = "decrypted"
-                # writing
-                file.write("Folder: Folder: {} was: {} at: {} UTC.\n".format(file_name, string, time_))
-            return 0
-        elif mode == "v":
-            with open("/home/{}/Revenant/userLog.txt".format(username) ,'a') as file:
-                # formatting
-                if encrypted is True:
-                    string = "encrypted"
-                elif encrypted is False:
-                    string = "decrypted"
-                # writing
-                file.write("Vault: Vault was: {} at: {} UTC.\n".format(string, time_))
-            return 0
-        elif mode == "c":
-            # logging password changes
-            with open("/home/{}/Revenant/userLog.txt".format(username) ,'a') as file:
-                file.write("Password: password was changed at: {} UTC.\n".format(time_))
-            return 0
-    except FileNotFoundError:
-        # handling exception if UserLog file is deleted
-        sg.popup_error("The UserLog file could not be found.\nRebuilding of the UserLog file will commence after this popup is closed.", font="Helvetica")
-        file = open("/home/{}/Revenant/userLog.txt".format(username), "w+")
-        file.write("userLog recreated due to FileNotFoundError.\n")
-        file.close()
-        # sleep so it feels like it did something
-        sleep(2)
-        sg.popup_auto_close("Rebuild complete.", font="Helvetica", non_blocking=True)
-        return 1
-
-
-# Making a random hash creation module
-def rand_hash() -> str:
-    "a function to generate random hex-encoded hashes."
-    rand_bytes = os.urandom(32)
-    rand_hash = hash.sha256(rand_bytes)
-    return_value = rand_hash.hexdigest()
-    return return_value
-
-
-# creating an encrypting function to encrypt files. Will be used by other functions to save space.
-def encrypt_file_function(key=bytes, salt=bytes, file_name=str, username=str, single=bool) -> int:
-    """
-    encryption function.
-    code of 0: No errors detected.
-    error code of 1: path of file is None. Cancelled encrypt/decrypt cycle.
-    error code of 2: The program does not have the permission to access the file. 
-    error code of 3: The file path is NOT a correct path.
-    error code of 4: File is hidden. Avoiding encryption so you don't accidently break another program.
-    error code of 5: A file encryption marker was detected during encryption.
-    error code of 6: Cannot occur; decryption only.
-    """
-    # guard clause
-    exit_code = guard_Clause(file_name, decrypting=False)
-    if exit_code != 0:
-        return exit_code
-    # setting the encrypted file marker.
-    magic = b'E1m%nj2i$bhilj'; intialization_vector = os.urandom(16)
-    # opening the file to grab data
-    with open (file_name, 'rb') as file:
-        data = file.read()
-    # making a cipher and encrypting the data
-    cipher = AES.new(key, AES.MODE_CFB, iv=intialization_vector); ciphered_data = cipher.encrypt(data)
-    # getting key sig
-    hash_key = hash.sha256(key); key_signature = hash_key.digest()
-    # writing needed info
-    with open (file_name, 'wb') as file:
-        file.write(magic)
-        file.write(intialization_vector)
-        file.write(salt)
-        file.write(key_signature)
-        file.write(ciphered_data)
-    # logging
-    if single == True:
-        add_log('s', username, file_name, encrypted=True)
-    return 0
-
-
-# creating the decrypting function. similar to the encrypting function, with a few changes for decrypting
-def decrypt_file_function(password=str, file_name=str, username=str, single=bool) -> int:
-    """
-    decryption function.
-    code of 0: No errors detected.
-    error code of 1: Path of file is None. Cancelled encrypt/decrypt cycle.
-    error code of 2: The program does not have the permission to access the file. 
-    error code of 3: The file path is NOT a correct path.
-    error code of 4: Cannot occur; encryption only.
-    error code of 5: Cannot occur; encryption only.
-    error code of 6: During decryption, file encryption marker was not detected.
-    error code of 7: Decryption key signature and and key signature of file do not match; files were encrypted with different keys.
-    """
-    # guard clause
-    exit_code = guard_Clause(file_name, decrypting=True)
-    if exit_code != 0:
-        return exit_code
-    # opening the file to grab required data
-    with open (file_name, 'rb') as file:
-        file.read(14)
-        iv = file.read(16)
-        salt = file.read(16)
-        key_signature = file.read(32)
-        ciphered_data = file.read() 
-    # creating the key and cipher, and checking the key signature
-    key = PBKDF2(password, salt, dkLen=32); hashed_signature = hash.sha256(key); given_key_signature = hashed_signature.digest()
-    if given_key_signature != key_signature:
-        return 7
-    # creating a cipher and decrypting the data
-    cipher = AES.new(key, AES.MODE_CFB, iv=iv); original_data = cipher.decrypt(ciphered_data)
-    # writing the data
-    with open (file_name, 'wb') as file:
-        file.write(original_data)
-    # logging
-    if single == True:
-        add_log("s", username, file_name, encrypted=False)
-    return 0
-
-
-# creating the encryption module for the Vault folder. This feature is to speed up encryption/decryption cycles when I want my files
-def Vault_encrypt(password=str, username=str) -> int:
-    """
-    encryption function for prenamed folder.
-    code of 0: No errors detected.
-    error code of 1: Folder was not detected and was rebuilt.
-    """
-    # looping through the sub directories and files with os.walk. Wrapped in try/except block in case Vault is deleted.
-    try:
-        file_name = "/home/{}/Vault/".format(username)
-        for root, dirs, files in os.walk(file_name):
-            for file in files:
-                # creating needed variables
-                salt = os.urandom(16); key = PBKDF2(password, salt, dkLen=32); path_of_file = os.path.join(root, file)
-                # calling encrypt function
-                encrypt_file_function(key, salt, path_of_file, username, single=False)
-        add_log("v", username, file_name, encrypted=True)
-        return 0
-    except FileNotFoundError:
-        sg.popup_error("Vault folder was not found.\nRebuilding will commence after the closing of this popup.", font="Helvetica")
-        try:
-            os.mkdir("/home/{}/Vault".format(username))
-            os.mkdir("/home/{}/Vault/Images/".format(username))
-            os.mkdir("/home/{}/Vault/Text Files/".format(username))
-            os.mkdir("/home/{}/Vault/Other/".format(username))
-            sleep(2)
-            sg.popup_auto_close("Rebuild complete; Vault folder returned to install default.", font="Helvetica", non_blocking=True)
-            return 1
-        except FileExistsError:
-            pass
-
-
-# creating vault decrypt function
-def Vault_decrypt(password=str, username=str) -> int:
-    """
-    decryption function for prenamed folder.
-    code of 0: No errors detected.
-    error code of 1: Path of folder was not detected; folder was rebuilt
-    error code of 2: Decryption key signature and and key signature of file do not match; files were encrypted with different keys.
-    """
-    # looping through files
-    key_sig_disparity = False; code = 0
-    try:
-        file_name = "/home/{}Vault/".format(username)
-        for root, dirs, files in os.walk(file_name):
-            for file in files:
-                path_of_file = os.path.join(root, file)
-                # passing over info. doing it like this instead of encryption module so that file error won't kill the decrypt
-                exit_code = decrypt_file_function(password, path_of_file, username, single=False)
-                if exit_code == 3:
-                    key_sig_disparity = True
-                # else statement to ensure continuity
-                else:
-                    continue
-        # logging
-        add_log("v", username, file_name, encrypted=False)
-        if key_sig_disparity is True:
-            return 2
-    except FileNotFoundError:
-        sg.popup_error("Vault folder was not found.\nRebuilding will commence after the closing of this popup.", font="Helvetica")
-        try:
-            os.mkdir("/home/{}/Vault/Images".format(username))
-            os.mkdir("/home/{}/Vault/Text Files".format(username))
-            os.mkdir("/home/{}/Vault/Other".format(username))
-            sleep(2)
-            sg.popup_auto_close("Rebuild complete; Vault folder returned to install default.", font="Helvetica", non_blocking=True)
-            return 1
-        except FileExistsError:
-            pass
-
-
-# creating a folder encryption module
-def folder_encryption_function(password=str, filename=str, username=str) -> int:
-    """
-    encryption function for prenamed folder.
-    code of 0: No errors detected.
-    error code of 1: Path of folder was None. Encryption was cancelled.
-    error code of 2: Path given was not valid.
-    """
-    # error checking to see if path was inputted wrong or encryption was cancelled.
-    if filename is None:
-        return 1
-    if os.path.exists(filename) is False:
-        return 2
-    # looping through files
-    for root, dirs, files in os.walk(filename):
-        for file in files:
-            # creating needed variables
-            salt = os.urandom(16); key = PBKDF2(password, salt, dkLen=32); path_of_file = os.path.join(root, file)
-            # encrypting
-            encrypt_file_function(key, salt, path_of_file, username, single=False)
-    add_log("f", username, filename, encrypted=True)
-    return 0
-
-
-# making the folder decryption module
-def folder_decryption_function(password=str, filename=str, username=str) -> int:
-    """
-    decryption function for folders.
-    code of 0: No errors detected.
-    error code of 1: Path of folder was None. decryption cancelled
-    error code of 2: Path of folder was not valid.
-    error code of 3: Decryption key signature and and key signature of one or more files do not match; files were encrypted with different keys.
-    """
-    key_sig_disparity = False
-    if filename is None:
-        return 1
-    if os.path.exists(filename) is False:
-        return 2
-    #looping through files
-    for root, dirs, files in os.walk(filename):
-        for file in files:
-            path_of_file = os.path.join(root, file)
-            exit_code = decrypt_file_function(password, path_of_file, username, single=False)
-            if exit_code == 7:
-                key_sig_disparity = True
-            else:
-                continue
-    add_log("f", username, filename, encrypted=False)
-    if key_sig_disparity is False:
-        return 0
-    elif key_sig_disparity is True:
-        return 3
+    def __init__(self, username) -> None:
+        self.username = username
     
 
-# Creating the login date module
-def login_date_Script(username=str) -> int:
-    """
-    A small function to log the login date of a user.
-    \n
-    Returns 0.
-    """
-    login_date = dt.datetime.utcnow()
-    with open ("/home/{}/Revenant/userLog.txt".format(username), 'a') as file:
-        file.write("Login detected at: " + str(login_date) + " UTC.\n")
-    return 0
+    def audit(self, mode=str) -> int:
+        """
+        Function to audit the UserLog file.
 
+        Parameters:
+            s: Removes single file log entries.
+            f: Removes folder log entries.
+            v: Removes Vault log entries.
+            a: Removes all entries.
 
-# and the logout date module
-def logout_date_Script(username=str) -> int:
-    """
-    A small function to log the logout date.
-    \n
-    Returns 0.
-    """
-    logout_date = dt.datetime.utcnow()
-    with open ("/home/{}/Revenant/userLog.txt".format(username), 'a') as file:
-        file.write("Logout detected at: " + str(logout_date) + " UTC.\n")
-    return 0
-
-
-# Creating the main login sequence.
-def login_sequence(password=str, username=str, count=int) -> int:
-    """
-    Main login sequence. Runs once.
-    code of 0: no errors detected.
-    Error code of 1: Username is invalid.
-    error code of 2: given password did not match cached password.
-    error code of 3: password or username was not given.
-    """
-    # checking if five incorrect attempts to login have occurred.
-    if count == 5:
-        sg.popup_auto_close("Invalid credentials entered at least 5 times. Exiting application...", font="Helvetica")
-        quit()
-    # guard clause
-    if password == "" or username == "":
-        return 3
-    # checking if user is valid
-    elif os.path.exists("/home/{}/".format(username)) is False:
-        return 1
-    # accessing the password cache and extracting its contents.
-    try:
-        with open ("/home/{}/Revenant/.password.hash".format(username), 'r') as file:
-            contents = file.read()
-    except FileNotFoundError:
-        sg.popup_error("Password cache not found. Reinstall with the most recent password and decrypt any encrypted files.\nThis program will now quit.", font='Helvetica')
-        quit()
-    length = len(contents)
-    # getting the hash and salt from cache
-    password_hash = contents[0:length:4]; salt = contents[1:length:4]
-    # creating the hash object and comparing
-    full_object = password + username.strip() + salt; full_hash = hash.sha256(full_object.encode()); hex_digest = full_hash.hexdigest()
-    # returning values
-    if password_hash == hex_digest:
-        logged_in = True
-        return 0
-    elif password_hash != hex_digest:
-        return 2
-
-
-# creating the password change module yaaaaaaaaay
-def change_password(old_password=str, new_password=str, username=str):
-    """
-    Module for changing password. Can return either an integer or string.
-    String returned: There were no error codes.
-    Error code of 1: Old password or new password was not supplied.
-    Error code of 2: Old password was not correct.
-    """
-    if old_password == "" or new_password == "":
-        return 1
-    list_ = []
-    # accessing the cache to extract contents
-    try:
-        with open ("/home/{}/Revenant/.password.hash".format(username), 'r') as file:
-            contents = file.read()
-    except FileNotFoundError:
-        sg.popup_error("Password cache not found. Reinstall with the most recent password and decrypt any encrypted files. This program will now quit.", font='Helvetica')
-        quit()
-    # getting hash and salt
-    length = len(contents); pass_hash = contents[0:length:4]; salt = contents[1:length:4]
-    # creating hash object and comparing
-    full = old_password + username.strip() + salt; hashed = hash.sha256(full.encode()); hex_string = hashed.hexdigest()
-    if hex_string == pass_hash:
-        # creating new salt and two filler hash strings
-        new_salt = rand_hash(); filler_1 = rand_hash(); filler_2 = rand_hash()
-        # creating the new object
-        full_object = new_password + username.strip() + new_salt; password_hash = hash.sha256(full_object.encode()); hex_digest = password_hash.hexdigest()
-        # layering hash
-        for i in range(64):
-            # breaking blocks up into 4 character blocks and appending to the list
-            single_hash_pass = hex_digest[i]; single_salt = new_salt[i]; filler_1_single = filler_1[i]; filler_2_single = filler_2[i]
-            combined_hash_block = single_hash_pass + single_salt + filler_1_single + filler_2_single; list_.append(combined_hash_block)
-        # combining hash blocks
-        layered_hash = "".join(list_)
-        sg.popup_auto_close("Parsing Drive. This may take a while.", font="Helvetica", non_blocking=True)
-        # looping through every file 
-        for root, dirs, files in os.walk("/home/{}/".format(username)):
-            for file in files:
-                path_of_file = os.path.join(root, file)
-                # avoiding a few common applications to speed up parsing, and passing any hidden files
-                if "steam" in path_of_file or "cache" in path_of_file or "wine" in path_of_file or "/." in path_of_file:
-                    continue
-                exit_code = decrypt_file_function(old_password, path_of_file, username, single=False)
-                if exit_code == 0:
-                    # generating needed things for encryption
-                    rand_bytes = os.urandom(16); key = PBKDF2(new_password, rand_bytes, dkLen=32)
-                    encrypt_file_function(key, rand_bytes, path_of_file, username, single=False)
-                else:
-                    continue
-        add_log("c", username, path_of_file, encrypted=True)
-        # writing the new password to the cache
-        with open("/home/{}/Revenant/.password.hash".format(username), 'w') as file:
-            file.write(layered_hash)
-        # returning the new password so that the while True: loop doesn't throw a fit. Else, returning 2.
-        return new_password
-    elif hex_string != pass_hash:
-        return 2
-
-
-# Auditing function to ensure that userLog doesn't become too large.
-def audit_userlog_function(mode=str, username=str) -> int:
-    """
-    Function to audit the UserLog file.
-    Code of 0: no errors detected.
-    Error code of 1: Mode was not specified.
-    """
-    if mode is None:
-        return 1
-    #s for singular, f for folders, v for vault, a for all
-    if mode == "s":
-        with open ("/home/{}/Revenant/userLog.txt".format(username), 'r') as file:
-            lines = file.readlines()
-        with open ("/home/{}/Revenant/userLog.txt".format(username), 'w') as file:
-            for line in lines:
-                if "Singular:" not in line.strip("\n"):
-                    file.write(line)
-        return 0
-    elif mode == "f":
-        with open ("/home/{}/Revenant/userLog.txt".format(username), 'r') as file:
-            lines = file.readlines()
-        with open ("/home/{}/Revenant/userLog.txt".format(username), 'w') as file:
-            for line in lines:
-                if "Folder:" not in line.strip("\n"):
-                    file.write(line)
-        return 0
-    elif mode == "v":
-        with open ("/home/{}/Revenant/userLog.txt".format(username), 'r') as file:
-            lines = file.readlines()
-        with open ("/home/{}/Revenant/userLog.txt".format(username), 'w') as file:
-            for line in lines:
-                if "Vault" not in line.strip("\n"):
-                    file.write(line)
-        return 0
-    elif mode == "a":
-        with open ("/home/{}/Revenant/userLog.txt".format(username), 'w') as file:
-            file.write("Userlog cleared.\n")
-        return 0
-
-
-# run a check at runtime to see how large the Userlog is. if it's over 64 KB, autoremove
-def Auto_edit():
-    """
-    a simple function that runs at runtime to make sure the userlog file does not get too large.
-    """
-    assumed_username = getuser()
-    try:
-        size = os.path.getsize("/home/{}/Revenant_source_code/userLog.txt".format(assumed_username))
-        if size >= 64000:
-            audit_userlog_function("a", assumed_username)
+        Return Codes:
+            Code of 0: no errors detected.
+            Code of 1: Mode was not specified.
+        """
+        if mode is None:
             return 1
-    except FileNotFoundError:
+        #s for singular, f for folders, v for vault, a for all
+        if mode == "s":
+            with open ("/home/{}/Revenant/userLog.txt".format(self.username), 'r') as file:
+                lines = file.readlines()
+            with open ("/home/{}/Revenant/userLog.txt".format(self.username), 'w') as file:
+                for line in lines:
+                    if "Singular:" not in line.strip("\n"):
+                        file.write(line)
+            return 0
+        elif mode == "f":
+            with open ("/home/{}/Revenant/userLog.txt".format(self.username), 'r') as file:
+                lines = file.readlines()
+            with open ("/home/{}/Revenant/userLog.txt".format(self.username), 'w') as file:
+                for line in lines:
+                    if "Folder:" not in line.strip("\n"):
+                        file.write(line)
+            return 0
+        elif mode == "v":
+            with open ("/home/{}/Revenant/userLog.txt".format(self.username), 'r') as file:
+                lines = file.readlines()
+            with open ("/home/{}/Revenant/userLog.txt".format(self.username), 'w') as file:
+                for line in lines:
+                    if "Vault" not in line.strip("\n"):
+                        file.write(line)
+            return 0
+        elif mode == "a":
+            with open ("/home/{}/Revenant/userLog.txt".format(self.username), 'w') as file:
+                file.write("Userlog cleared.\n")
+            return 0
+        pass
+    
+
+    def auto_audit(self) -> int:
+        """
+        a simple function that runs at runtime to make sure the userlog file does not get too large.
+        """
+        assumed_username = getuser()
+        try:
+            size = os.path.getsize("/home/{}/Revenant_source_code/userLog.txt".format(assumed_username))
+            if size >= 64000:
+                self.audit("a")
+                return 1
+        except FileNotFoundError:
+            pass
+
+
+    def log(self, mode=str, path=str, encrypted=bool) -> int:
+        """
+        Logging function for various file operations.
+
+        Parameters:
+            mode (string): This is the file operation you are doing.
+                Single files = "s"   \n
+                Folders = "f"   \n
+                Vault operations = "v"   \n
+                password change = "c"   \n
+            path (string): The file path of the file you have done an operation on.
+
+            encrypted (boolean): Whether or not the operation was an encryption.
+
+        Returns 0 if logging was successful, 1 if mode or path was None, and 2 if userLog does not exist.
+        """
+        if mode is None or path is None:
+            return 1
+        time_ = str(dt.datetime.utcnow())
+        try:
+            if mode == "s":
+                with open ("/home/{}/Revenant/userLog.txt".format(self.username), "a") as file:
+                    if encrypted is True:
+                        string_ = "encrypted"
+                    else:
+                        string_ = "decrypted"
+                    file.write("Singular: File: {} was: {} at: {} UTC".format(path, string_, time_))
+                pass
+            elif mode == "f":
+                with open("/home/{}/Revenant/userLog.txt".format(self.username) ,'a') as file:
+                    # formatting
+                    if encrypted is True:
+                        string_ = "encrypted"
+                    elif encrypted is False:
+                        string_ = "decrypted"
+                    # writing
+                    file.write("Folder: Folder: {} was: {} at: {} UTC.\n".format(path, string_, time_))
+            elif mode == "v":
+                with open("/home/{}/Revenant/userLog.txt".format(self.username) ,'a') as file:
+                    # formatting
+                    if encrypted is True:
+                        string_ = "encrypted"
+                    elif encrypted is False:
+                        string_ = "decrypted"
+                    # writing
+                    file.write("Vault: Vault was: {} at: {} UTC.\n".format(string_, time_))
+            elif mode == "c":
+                with open("/home/{}/Revenant/userLog.txt".format(self.username) ,'a') as file:
+                    file.write("Password: password was changed at: {} UTC.\n".format(time_))
+        except FileNotFoundError:
+            file = open("/home/{}/Revenant/userLog.txt".format(self.username), "w+")
+            file.write("userLog recreated due to FileNotFoundError.\n")
+            file.close()
+            return 2
+
+
+    def log_logout(self) -> int:
+        """
+        A small function to log the logout date.
+        
+        Returns 0.
+        """
+        logout_date = dt.datetime.utcnow()
+        with open ("/home/{}/Revenant/userLog.txt".format(self.username), 'a') as file:
+            file.write("Logout detected at: " + str(logout_date) + " UTC.\n")
+        return 0
+
+
+    def log_login(self) -> int:
+        """
+        A small function to log the login date of a user.
+    
+        Returns 0.
+        """
+        login_date = dt.datetime.utcnow()
+        with open ("/home/{}/Revenant/userLog.txt".format(self.username), 'a') as file:
+            file.write("Login detected at: " + str(login_date) + " UTC.\n")
+        return 0
+
+
+class cipher:
+    """
+    A class for ciphering/deciphering operations.
+
+    Linux native.
+
+    Parameters:
+        Username: The Linux username of the user who is logging in.
+        Password: The password of the user.
+    """
+
+
+    def __init__(self, password=str, username=str) -> None:
+        self.password = password
+        self.username = username
+        self.marker  = b"E1m%nj2i$bhilj"
+        self.logger = log
+
+
+    def log(self, mode=str, path=str, encrypted=bool) -> int:
+        self.logger.log(mode=mode, path=path, encrypted=encrypted)
         pass
 
 
-Auto_edit()
+    def guard_clause(self, path=str or None, decrypting=bool) -> int:
+        """
+        A guard clause for file operations.
+
+        Return codes:
+            0: File path is good.
+            1: File path is None.
+            2: File path is invalid.
+            3: App does not have permission to access file.
+            4: File is hidden.
+            5: File is part of root filesystem and not accessing chromeos.
+            6: File encryption marker detected during encryption.
+            7: File encryption marker not detected during decryption.
+        """
+        # checking if file is hidden
+        if "/." in path:
+            return 4
+        # checking if file is part of the root filesystem and not a part of ChromeOS for linux in Chromebooks
+        if "/home/" not in path and "/mnt/chromeos/MyFiles" not in path:
+            return 5
+        # checking if decrypt is cancelled
+        if path is None:
+            return 1
+        try:
+            if os.path.isfile(path) is True:
+                with open (path, "rb") as file:
+                    file_marker = file.read(14)
+            elif os.path.isdir(path) is True:
+                return 0
+        # checking if file exists
+        except FileNotFoundError:
+            return 2
+        # checking if application has permission
+        except PermissionError:
+            return 3
+        # checking if there is a file encryption marker during encryption
+        if file_marker == self.marker and decrypting is False:
+            return 6
+        # checking if there is not a file encryption marker during decryption
+        elif file_marker != self.marker and decrypting is True:
+            return 7
+        else:
+            # deleting everything
+            del file_marker
+            return 0
+
+
+    def encrypt(self, path=str) -> int:
+        """
+        A method for encrypting a file/folder object.
+
+        Takes only a file path as an argument.
+
+        Return codes:
+            0: File encrypt successful.
+            1: Path is None.
+            2: Path is invalid.
+            3: App does not have permissions required to access file.
+            4: File is hidden.
+            5: File is part of root filesystem and not part of ChromeOS.
+            6: File encryption marker detected during encryption.
+        """
+        return_code = self.guard_clause(path, decrypting=False)
+        if return_code != 0:
+            return return_code
+        salt = os.urandom(32)
+        iv = os.urandom(16)
+        key = PBKDF2(self.password, salt, dkLen=32)
+        key_hash = hash.sha256(key); key_signature = key_hash.digest()
+        if os.path.isfile(path) is True:
+            with open (path, "rb") as file:
+                data = file.read()
+            cipher = AES.new(key, AES.MODE_CFB, iv=iv)
+            ciphered_data = cipher.encrypt(data)
+            with open(path, "wb") as file:
+                file.write(self.marker)
+                file.write(iv)
+                file.write(salt)
+                file.write(key_signature)
+                file.write(ciphered_data)
+            objects = [return_code, salt, iv, key, key_hash, key_signature, data, cipher, ciphered_data]
+            for object_ in objects:
+                del object_
+            self.log()
+            return 0
+        elif os.path.isdir(path) is True:
+            for root, dirs, files in os.walk():
+                for file in files:
+                    file_name = os.path.join(root, file)
+                    return_code = self.guard_clause(file_name, decrypting=False)
+                    if return_code != 0:
+                        continue
+                    with open (file_name) as file:
+                        data = file.read()
+                    cipher = AES.new(key, AES.MODE_CFB, iv=iv)
+                    ciphered_data = cipher.encrypt(data)
+                    with open(path, "wb") as file:
+                        file.write(self.marker)
+                        file.write(iv)
+                        file.write(salt)
+                        file.write(key_signature)
+                        file.write(ciphered_data)
+                    objects = [return_code, salt, iv, key, key_hash, key_signature, data, cipher, ciphered_data]
+                    for object_ in objects:
+                        del object_
+            self.log()
+            return 0
+        else:
+            sg.popup_auto_close("WHAT DID YOU DO????? the app didn't detect the file as either a file or a dir. what? email me pls", font="Helvetica")    
+
+
+    def decrypt(self, filepath=str) -> int:
+        """
+        A method for decrypting an encrypted file.
+
+        Takes only a file path as an argument.
+
+        return codes:
+            0: File decrypt successful.
+            1: Path is None.
+            2: File path is invalid.
+            3: App does not have permissions required to access file.
+            4: File is hidden.
+            5: File is part of root filesystem and not part of ChromeOS.
+            6: File was encrypted with a different key.
+            7: File was not encrypted.
+        """
+        return_code = self.guard_clause(filepath, decrypting=False)
+        if return_code != 0:
+            return return_code
+        if os.path.isfile(filepath) is True:
+            with open (filepath, "rb") as file:
+                file.read(14)
+                iv = file.read(16)
+                salt = file.read(32)
+                file_signature = file.read(32)
+                ciphered_data = file.read()
+            key = PBKDF2(self.password, salt, dkLen=32)
+            key_hash = hash.sha256(key); key_signature = key_hash.digest()
+            if file_signature != key_signature:
+                objects = [return_code, iv, salt, file_signature, ciphered_data, key, key_hash, key_signature]
+                for object_ in objects:
+                    del object_
+                return 6
+            cipher = AES.new(key, AES.MODE_CFB, iv=iv)
+            original_data = cipher.decrypt(ciphered_data)
+            with open(filepath, "wb") as file:
+                file.write(original_data)
+            objects = [return_code, iv, salt, file_signature, ciphered_data, key, key_hash, key_signature, cipher, original_data]
+            for object_ in objects:
+                del object_
+            self.log()
+            return 0
+        elif os.path.isdir(filepath) is True:
+            for root, dirs, files in os.walk(filepath):
+                for file in files:
+                    file_name = os.path.join(root, file)
+                    return_code = self.guard_clause(file_name, decrypting=True)
+                    if return_code != 0:
+                        continue
+                    with open (file_name, "rb") as file:
+                        file.read(14)
+                        iv = file.read(16)
+                        salt = file.read(32)
+                        file_signature = file.read(32)
+                        ciphered_data = file.read()
+                    key = PBKDF2(self.password, salt, dkLen=32)
+                    key_hash = hash.sha256(key); key_signature = key_hash.digest()
+                    if key_signature != file_signature:
+                        return 6
+                    cipher = AES.new(key, AES.MODE_CFB, iv=iv)
+                    original_data = cipher.decrypt(ciphered_data)
+                    with open (file_name, "wb") as file:
+                        file.write(original_data)
+                    objects = [return_code, iv, salt, file_signature, ciphered_data, key, key_hash, key_signature, cipher, original_data]
+                    for object_ in objects:
+                        del object_
+            self.log()
+            return 0    
+        else:
+            sg.popup_auto_close("WHAT DID YOU DO????? the app didn't detect the file as either a file or a dir. what? email me pls", font="Helvetica")    
+    
+        
+
+        self.log()
+        pass
+
+
+    def Vault_operation(self, decrypting=bool):
+        """
+        Method for encrypting the Vault folder.
+
+        return codes:
+        0: Folder was successfully encrypted/decrypted. Some files which did not meet the requirements were skipped.
+        1: Folder was not found on default path and was rebuilt.
+
+        """
+        if decrypting is True:
+            try:
+                for root, dirs, files in os.walk("/home/{}/Vault".format(self.username)):
+                    for file in files:
+                        file_name = os.path.join(root, file)
+                        return_code = self.guard_clause(file_name, decrypting=True)
+                        if return_code != 0:
+                            continue 
+                        with open (file_name, "rb")  as file:
+                            file.read(14)
+                            iv = file.read(16)
+                            salt = file.read(32)
+                            file_signature = file.read(32)
+                            ciphered_data = file.read()
+                        key = PBKDF2(self.password, salt, dkLen=32)
+                        key_hash = hash.sha256(key); key_signature = key_hash.digest()
+                        if key_signature != file_signature:
+                            continue
+                        cipher = AES.new(key, AES.MODE_CFB, iv=iv)
+                        original_data = cipher.decrypt(ciphered_data)
+                        with open (file_name, "wb") as file:
+                            file.write(original_data)
+                return 0
+            except FileNotFoundError:
+                try:
+                    os.mkdir("/home/{}/Vault".format(self.username))
+                    os.mkdir("/home/{}/Vault/Images/".format(self.username))
+                    os.mkdir("/home/{}/Vault/Text/".format(self.username))
+                    os.mkdir("/home/{}/Vault/Other/".format(self.username))
+                    return 1
+                except FileExistsError:
+                    pass
+        else:
+            try:
+                for root, dirs, files in os.walk("/home/{}/Vault".format(self.username)):
+                    for file in files:
+                        file_name = os.path.join(root, file)
+                        return_code = self.guard_clause(file_name, decrypting=False)
+                        if return_code != 0:
+                            return 8
+                        salt = os.urandom(32)
+                        iv = os.urandom(16)
+                        key = PBKDF2(self.password, salt, dkLen=32)
+                        key_hash = hash.sha256(key); key_signature = key_hash.digest()
+                        with open (file_name, "rb") as file:
+                            data = file.read()
+                        cipher = AES.new(key, AES.MODE_CFB, iv=iv)
+                        ciphered_data = cipher.encrypt(data)
+                        with open (file_name, "wb") as file:
+                            file.write(self.marker)
+                            file.write(iv)
+                            file.write(salt)
+                            file.write(key_signature)
+                            file.write(ciphered_data)
+                return 0                        
+            except FileNotFoundError:
+                try:
+                    os.mkdir("/home/{}/Vault".format(self.username))
+                    os.mkdir("/home/{}/Vault/Images/".format(self.username))
+                    os.mkdir("/home/{}/Vault/Text/".format(self.username))
+                    os.mkdir("/home/{}/Vault/Other/".format(self.username))
+                    return 1
+                except FileExistsError:
+                    pass
+
+
+    def change_password(self, new_password = str):
+        self.password = new_password
+        pass
+
+
+class login:
+    """
+    Class responsible for logging the user in.
+    """
+    def __init__(self) -> None:
+        pass
+    
+
+    def rand_hash(self) -> str:
+        "a function to generate random hex-encoded hashes."
+        rand_bytes = os.urandom(32)
+        rand_hash = hash.sha256(rand_bytes)
+        return_value = rand_hash.hexdigest()
+        return return_value
+    
+
+    def login_sequence(self, password=str, username=str, count=int) -> int:
+        """
+        Main login sequence. Runs once.
+        code of 0: no errors detected.
+        Error code of 1: Username is invalid.
+        error code of 2: given password did not match cached password.
+        error code of 3: password or username was not given.
+        """
+        # checking if five incorrect attempts to login have occurred.
+        if count == 5:
+            sg.popup_auto_close("Invalid credentials entered at least 5 times. Exiting application...", font="Helvetica")
+            quit()
+        # guard clause
+        if password == "" or username == "":
+            return 3
+        # checking if user is valid
+        elif os.path.exists("/home/{}/".format(username)) is False:
+            return 1
+        # accessing the password cache and extracting its contents.
+        try:
+            with open ("/home/{}/Revenant/.password.hash".format(username), 'r') as file:
+                contents = file.read()
+        except FileNotFoundError:
+            sg.popup_error("Password cache not found. Reinstall with the most recent password and decrypt any encrypted files.\nThis program will now quit.", font='Helvetica')
+            quit()
+        length = len(contents)
+        # getting the hash and salt from cache
+        password_hash = contents[0:length:4]; salt = contents[1:length:4]
+        # creating the hash object and comparing
+        full_object = password + username.strip() + salt; full_hash = hash.sha256(full_object.encode()); hex_digest = full_hash.hexdigest()
+        # returning values
+        if password_hash == hex_digest:
+            return 0
+        elif password_hash != hex_digest:
+            return 2
+
+
+    def change_password(self, old_password=str, new_password=str, username=str):
+        """
+        Module for changing password. Can return either an integer or string.
+        String returned: There were no error codes.
+        Error code of 1: Old password or new password was not supplied.
+        Error code of 2: Old password was not correct.
+        """
+        if old_password == "" or new_password == "":
+            return 1
+        list_ = []
+        # accessing the cache to extract contents
+        try:
+            with open ("/home/{}/Revenant/.password.hash".format(username), 'r') as file:
+                contents = file.read()
+        except FileNotFoundError:
+            sg.popup_error("Password cache not found. Reinstall with the most recent password and decrypt any encrypted files. This program will now quit.", font='Helvetica')
+            quit()
+        # getting hash and salt
+        length = len(contents); pass_hash = contents[0:length:4]; salt = contents[1:length:4]
+        # creating hash object and comparing
+        full = old_password + username.strip() + salt; hashed = hash.sha256(full.encode()); hex_string = hashed.hexdigest()
+        if hex_string == pass_hash:
+            # creating new salt and two filler hash strings
+            new_salt = self.rand_hash(); filler_1 = self.rand_hash(); filler_2 = self.rand_hash()
+            # creating the new object
+            full_object = new_password + username.strip() + new_salt; password_hash = hash.sha256(full_object.encode()); hex_digest = password_hash.hexdigest()
+            # layering hash
+            for i in range(64):
+                # breaking blocks up into 4 character blocks and appending to the list
+                single_hash_pass = hex_digest[i]; single_salt = new_salt[i]; filler_1_single = filler_1[i]; filler_2_single = filler_2[i]
+                combined_hash_block = single_hash_pass + single_salt + filler_1_single + filler_2_single; list_.append(combined_hash_block)
+            # combining hash blocks
+            layered_hash = "".join(list_)
+            sg.popup_auto_close("Parsing Drive. This may take a while.", font="Helvetica", non_blocking=True)
+            # looping through every file 
+            old_cipher = cipher(old_password, username)
+            new_cipher = cipher(new_password, username)
+            for root, dirs, files in os.walk("/home/{}/".format(username)):
+                for file in files:
+                    path_of_file = os.path.join(root, file)
+                    exit_code = old_cipher.decrypt(path_of_file)
+                    if exit_code == 0:
+                        new_cipher.encrypt(path_of_file)
+                    else:
+                        continue
+            # writing the new password to the cache
+            del old_cipher; del new_cipher
+            with open("/home/{}/Revenant/.password.hash".format(username), 'w') as file:
+                file.write(layered_hash)
+            # returning the new password so that the while True: loop doesn't throw a fit. Else, returning 2.
+            return new_password
+        elif hex_string != pass_hash:
+            return 2
 
 
 sg.theme('DarkBlue')
@@ -571,160 +634,178 @@ layout = [
     ]
 ]
 
+
 # Intializing the window.
 window = sg.Window("Revenant Version 1.0.0", layout, element_justification="C").Finalize()
 window.Maximize()
 
 
 # Creating the loop to check for events and values
-def main():
+class Main:
     """
-    The main function of the application.
+    Main class for the application.
     """
-    # setting needed variables
-    username = "0"; password = "0"; count = 0; LAYOUT_CYCLE_VAR = 0; logged_in = False; count = 0; alert = Auto_edit()
-    while True:
-        event, values = window.read()
-        if event in (None, "Close Window", "Close", "logout", "Close_Audit"):
-            logout_date_Script(username)
-            quit()
-        if alert == 1:
-            sg.popup_auto_close("userLog capacity reached. userLog cleared.", font="Helvetica", non_blocking=True)
-        if event == "Ok" and logged_in is False:
-            username = values["username"]
-            password = values["password"]
-            exit_code = login_sequence(password, username, count)
-            if exit_code ==  0:
-                LAYOUT_CYCLE_VAR = 1
-                logged_in = True
-            elif exit_code == 1:
-                sg.popup_auto_close("The given username is not a valid username.", font="Helvetica", non_blocking=True)
-            elif exit_code == 2:
-                sg.popup_auto_close("Incorrect credentials.", font="Helvetica", non_blocking=True)
-                count += 1
-            elif exit_code == 3:
-                sg.popup_auto_close("Password or username was not provided.", font="Helvetica", non_blocking=True)
-        if LAYOUT_CYCLE_VAR == 1:
-            window[f"Login_Layout"].update(visible=False)
-            window[f"Logged_Layout"].update(visible=True)
-            LAYOUT_CYCLE_VAR = 2
-        if event == "file_hub":
-            window[f"Logged_Layout"].update(visible=False)
-            window[f"File_hub_layout"].update(visible=True)
-        elif event == "password_change":
-            window[f"Logged_Layout"].update(visible=False)
-            window[f"Change_pass_layout"].update(visible=True)
-        elif event == "back_pass":
-            window[f"Change_pass_layout"].update(visible=False)
-            window[f"Logged_Layout"].update(visible=True)
-        elif event == "back":
-            window[f"File_hub_layout"].update(visible=False)
-            window[f"Logged_Layout"].update(visible=True)
-        elif event == "Intiate_audit":
-            window[f"Logged_Layout"].update(visible=False)
-            window[f"File_hub_layout"].update(visible=False)
-            window[f"userLog_audit_layout"].update(visible=True)
-        elif event == "audit_return":
-            window[f"File_hub_layout"].update(visible=True)
-            window[f"userLog_audit_layout"].update(visible=False)
-        elif event == "file_encrypt":
-            window[f"Logged_Layout"].update(visible=False)
-            # getting needed variables
-            salt = os.urandom(16); key = PBKDF2(password, salt, dkLen=32); file_name = sg.popup_get_file("Please select a file for encryption.", font="Helvetica")
-            exit_code = encrypt_file_function(key, salt, file_name, username, single=True)
-            if exit_code == 0:
-                sg.popup_auto_close("Encryption successful; file: " + file_name + " successfully encrypted.", font="Helvetica", non_blocking=True)
-            elif exit_code == 1:
-                sg.popup_auto_close("File encryption cancelled.", font="Helvetica", non_blocking=True)
-            elif exit_code == 2:
-                sg.popup_auto_close("The application does not have the required permissions to access the file.", font="Helvetica", non_blocking=True)
-            elif exit_code == 3:
-                sg.popup_auto_close("The given file is not a valid path.", font="Helvetica", non_blocking=True)
-            elif exit_code == 4:
-                sg.popup_auto_close("The file was hidden and will not be encrypted.", font="Helvetica", non_blocking=True)
-            elif exit_code == 5:
-                sg.popup_auto_close("The file was already encrypted.", font="Helvetica", non_blocking=True)
-        elif event == "file_decrypt":
-            window[f"Logged_Layout"].update(visible=False)
-            file_name = sg.popup_get_file("Please select a file for decryption.", font="Helvetica")
-            exit_code = decrypt_file_function(password, file_name, username, single=True)
-            if exit_code == 0:
-                sg.popup_auto_close("Decryption successful; file: " + file_name + " successfully decrypted.", font="Helvetica", non_blocking=True)
-            elif exit_code == 1:
-                sg.popup_auto_close("File decryption cancelled.", font="Helvetica", non_blocking=True)
-            elif exit_code == 2:
-                sg.popup_auto_close("The application does not have the required permissions to access the file.", font="Helvetica", non_blocking=True)
-            elif exit_code == 3:
-                sg.popup_auto_close("The given file path is not a valid path.", font="Helvetica", non_blocking=True)
-            elif exit_code == 6:
-                sg.popup_auto_close("The given file was already decrypted.", font="Helvetica", non_blocking=True)
-            elif exit_code == 7:
-                sg.popup_auto_close("The given file was encrypted with a different key. The file was unable to be decrypted with the current credentials.", font="Helvetica", non_blocking=True)
-        elif event == "folder_encrypt":
-            window[f"Logged_Layout"].update(visible=False)
-            file_name = sg.popup_get_folder("Please select a folder for encryption.")
-            print (username)
-            exit_code = folder_encryption_function(password, file_name, username)
-            if exit_code == 0:
-                sg.popup_auto_close("Folder encryption successful; folder: {} successfully encrypted".format(file_name), font="Helvetica", non_blocking=True)
-            elif exit_code == 1:
-                sg.popup_auto_close("Folder encryption cancelled.", font="Helvetica", non_blocking=True)
-            elif exit_code == 2:
-                sg.popup_auto_close("The given folder path does not exist.", font="Helvetica", non_blocking=True)
-        elif event == "folder_decrypt":
-            window[f"Logged_Layout"].update(visible=False)
-            file_name = sg.popup_get_folder("Please select a folder for encryption.")
-            exit_code = folder_decryption_function(password, file_name, username)
-            if exit_code == 0:
-                sg.popup_auto_close("Folder decryption successful; folder:" +file_name+ " successfully decrypted", font="Helvetica", non_blocking=True)
-            elif exit_code == 1:
-                sg.popup_auto_close("Folder decryption cancelled.", font="Helvetica", non_blocking=True)
-            elif exit_code == 2:
-                sg.popup_auto_close("The given folder path does not exist.", font="Helvetica", non_blocking=True)
-            elif exit_code == 3:
-                sg.popup_auto_close("Some files contained in the given folder were encrypted with a different key and were ignored.", font="Helvetica", non_blocking=True)
-        elif event == "vault_encrypt":
-            window[f"Logged_Layout"].update(visible=False)
-            exit_code = Vault_encrypt(password, username)
-            if exit_code == 0:
-                sg.popup_auto_close("Encryption successful; Vault is now encrypted.", font="Helvetica", non_blocking=True)
-        elif event == "vault_decrypt":
-            exit_code = Vault_decrypt(password, username)
-            if exit_code == 0:
-                sg.popup_auto_close("Decryption successful; Vault is now decrypted.", font="Helvetica", non_blocking=True)
-            elif exit_code == 2:
-                sg.popup_auto_close("Some files contained in the Vault folder were encrypted with different keys and were ignored.", font="Helvetica", non_blocking=True)
-        elif event == "OK_pass":
-            window[f"Logged_Layout"].update(visible=False)
-            old_pass = values["old_password"]
-            new_pass = values["new_password"]
-            exit_code = change_password(old_pass, new_pass, username)
-            if exit_code == 1:
-                sg.popup_error("You did not give either your old password or new password. Password change automatically cancelled.", font="Helvetica")
-            elif exit_code == 2:
-                sg.popup_auto_close("The old password that was entered is wrong. Password change automatically cancelled.", font="Helvetica", non_blocking=True)
-            else:
-                sg.popup_auto_close("Password Change successful.", font="Helvetica", non_blocking=True)
-                password = exit_code
-        elif event == "single_file_log_audit":
-            window[f"Logged_Layout"].update(visible=False)
-            exit_code = audit_userlog_function("s", username)
-            if exit_code == 0:
-                sg.popup_auto_close("userLog audit completed. All Singular File log instances have been deleted.", font="Helvetica", non_blocking=True)
-        elif event == "folder_logs_audit":
-            window[f"Logged_Layout"].update(visible=False)
-            exit_code = audit_userlog_function("f", username)
-            sg.popup_auto_close("userLog audit completed. All Folder log instances have been deleted.", font="Helvetica", non_blocking=True)
-        elif event == "vault_log_audit":
-            window[f"Logged_Layout"].update(visible=False)
-            exit_code = audit_userlog_function("v", username)
-            if exit_code == 0:
-                sg.popup_auto_close("userLog audit completed. All Vault log instances have been deleted.", font="Helvetica", non_blocking=True)
-        elif event == "Clear_userlog":
-            window[f"Logged_Layout"].update(visible=False)
-            exit_code = audit_userlog_function("a", username)
-            if exit_code == 0:
-                sg.popup_auto_close("userLog audit completed. All log instances have been deleted.", font="Helvetica", non_blocking=True)
+    def __init__(self) -> None:
+        pass
+
+    def intialize():
+        """
+        Intializes the app.
+
+        Does not return; call on last line.
+        """
+        # setting needed variables
+        username = "0"; password = "0"; count = 0; LAYOUT_CYCLE_VAR = 0; logged_in = False; count = 0; alert = 0
+        # setting the login class
+        login_class = login()
+        while True:
+            event, values = window.read()
+            if event in (None, "Close Window", "Close", "logout", "Close_Audit"):
+                logger.log_logout()
+                quit()
+            if alert == 1:
+                sg.popup_auto_close("userLog capacity reached. userLog cleared.", font="Helvetica", non_blocking=True)
+            if event == "Ok" and logged_in is False:
+                username = values["username"]
+                password = values["password"]
+                exit_code = login_class.login_sequence(password = password, username=username, count=count)
+                if exit_code ==  0:
+                    LAYOUT_CYCLE_VAR = 1
+                    logged_in = True
+                    encrypter = cipher(password=password, username=username)
+                    logger = log(username=username)
+                    log.log_login()
+                elif exit_code == 1:
+                    sg.popup_auto_close("The given username is not a valid username.", font="Helvetica", non_blocking=True)
+                elif exit_code == 2:
+                    sg.popup_auto_close("Incorrect credentials.", font="Helvetica", non_blocking=True)
+                    count += 1
+                elif exit_code == 3:
+                    sg.popup_auto_close("Password or username was not provided.", font="Helvetica", non_blocking=True)
+            if LAYOUT_CYCLE_VAR == 1:
+                window[f"Login_Layout"].update(visible=False)
+                window[f"Logged_Layout"].update(visible=True)
+                LAYOUT_CYCLE_VAR = 2
+            if event == "file_hub":
+                window[f"Logged_Layout"].update(visible=False)
+                window[f"File_hub_layout"].update(visible=True)
+            elif event == "password_change":
+                window[f"Logged_Layout"].update(visible=False)
+                window[f"Change_pass_layout"].update(visible=True)
+            elif event == "back_pass":
+                window[f"Change_pass_layout"].update(visible=False)
+                window[f"Logged_Layout"].update(visible=True)
+            elif event == "back":
+                window[f"File_hub_layout"].update(visible=False)
+                window[f"Logged_Layout"].update(visible=True)
+            elif event == "Intiate_audit":
+                window[f"Logged_Layout"].update(visible=False)
+                window[f"File_hub_layout"].update(visible=False)
+                window[f"userLog_audit_layout"].update(visible=True)
+            elif event == "audit_return":
+                window[f"File_hub_layout"].update(visible=True)
+                window[f"userLog_audit_layout"].update(visible=False)
+            elif event == "file_encrypt":
+                # getting file:
+                file = sg.popup_get_file("Select the file you wish to encrypt.", font="Helvetica")
+                exit_code = encrypter.encrypt(file)
+                if exit_code == "0":
+                    sg.popup_auto_close("File encryption successful.", font="Helvetica", non_blocking=True)
+                elif exit_code == "1":
+                    sg.popup_auto_close("File encryption cancelled.", font="Helvetica", non_blocking=True)
+                elif exit_code == "2":
+                    sg.popup_auto_close("File path is invalid.", font="Helvetica", non_blocking=True)
+                elif exit_code == "3":
+                    sg.popup_auto_close("App does not have permission to access file.", font="Helvetica", non_blocking=True)
+                elif exit_code == "4":
+                    sg.popup_auto_close("File is hidden.", font="Helvetica", non_blocking=True)
+                elif exit_code == "5":
+                    sg.popup_auto_close("File is part of root filesystem and not part of ChromeOS.", font="Helvetica", non_blocking=True)
+                elif exit_code == "6":
+                    sg.popup_auto_close("File was already encrypted.", font="Helvetica", non_blocking=True)
+            elif event == "file_decrypt":
+                file = sg.popup_get_file("Select the file you wish to decrypt.", font="Helvetica", non_blocking=True)
+                exit_code = encrypter.decrypt(file)
+                if exit_code == "0":
+                    sg.popup_auto_close("File decryption successful.", font="Helvetica", non_blocking=True)
+                if exit_code == "1":
+                    sg.popup_auto_close("File decryption cancelled.", font="Helvetica", non_blocking=True)
+                if exit_code == "2":
+                    sg.popup_auto_close("File path is invalid.", font="Helvetica", non_blocking=True)
+                if exit_code == "3":
+                    sg.popup_auto_close("App does not have permission to access file.", font="Helvetica", non_blocking=True)
+                if exit_code == "4":
+                    sg.popup_auto_close("File is hidden.", font="Helvetica", non_blocking=True)
+                if exit_code == "5":
+                    sg.popup_auto_close("File is part of root filesystem and not part of ChromeOS.", font="Helvetica", non_blocking=True)
+                if exit_code == "6":
+                    sg.popup_auto_close("File was encrypted with a different key.", font="Helvetica", non_blocking=True)
+                if exit_code == "7":
+                    sg.popup_auto_close("File was not encrypted.", font="Helvetica", non_blocking=True)
+            elif event == "folder_encrypt":
+                folder = sg.popup_get_folder("Select the file you wish to encrypt.", font="Helvetica")
+                exit_code = encrypter.encrypt(folder)
+                if exit_code == "0":
+                    sg.popup_auto_close("Folder encryption successful.", font="Helvetica", non_blocking=True)
+                elif exit_code == "1":
+                    sg.popup_auto_close("Folder encryption cancelled.", font="Helvetica", non_blocking=True)
+                elif exit_code == "2":
+                    sg.popup_auto_close("Folder path is invalid.", font="Helvetica", non_blocking=True)
+                elif exit_code == "3":
+                    sg.popup_auto_close("App does not have permission to access file.", font="Helvetica", non_blocking=True)
+                elif exit_code == "4":
+                    sg.popup_auto_close("Folder is hidden.", font="Helvetica", non_blocking=True)
+                elif exit_code == "5":
+                    sg.popup_auto_close("Folder is part of root filesystem and not part of ChromeOS.", font="Helvetica", non_blocking=True)
+                elif exit_code == "6":
+                    sg.popup_auto_close("Folder was already encrypted.", font="Helvetica", non_blocking=True)
+                pass
+            elif event == "folder_decrypt":
+                folder = sg.popup_get_folder("Select the file you wish to decrypt.", font="Helvetica", non_blocking=True)
+                exit_code = encrypter.decrypt(folder)
+                if exit_code == "0":
+                    sg.popup_auto_close("Folder decryption successful.", font="Helvetica", non_blocking=True)
+                if exit_code == "1":
+                    sg.popup_auto_close("Folder decryption cancelled.", font="Helvetica", non_blocking=True)
+                if exit_code == "2":
+                    sg.popup_auto_close("Folder path is invalid.", font="Helvetica", non_blocking=True)
+                if exit_code == "3":
+                    sg.popup_auto_close("App does not have permission to access file.", font="Helvetica", non_blocking=True)
+                if exit_code == "4":
+                    sg.popup_auto_close("Folder is hidden.", font="Helvetica", non_blocking=True)
+                if exit_code == "5":
+                    sg.popup_auto_close("Folder is part of root filesystem and not part of ChromeOS.", font="Helvetica", non_blocking=True)
+                if exit_code == "6":
+                    sg.popup_auto_close("Folder was encrypted with a different key.", font="Helvetica", non_blocking=True)
+                if exit_code == "7":
+                    sg.popup_auto_close("Folder was not encrypted.", font="Helvetica", non_blocking=True)
+                pass
+            elif event == "vault_encrypt":
+                pass
+            elif event == "OK_pass":
+                old_pass = values["old_password"]
+                new_pass = values["new_password"]
+                exit_code = login_class.change_password(old_pass, new_pass, username)
+                if exit_code == 1:
+                    sg.popup_error("You did not give either your old password or new password. Password change automatically cancelled.", font="Helvetica")
+                elif exit_code == 2:
+                    sg.popup_auto_close("The old password that was entered is wrong. Password change automatically cancelled.", font="Helvetica", non_blocking=True)
+                else:
+                    encrypter.change_password(exit_code)
+                    sg.popup_auto_close("Password Change successful.", font="Helvetica", non_blocking=True)
+            elif event == "single_file_log_audit":
+                logger.audit("s")
+                sg.popup_auto_close("Selected entries cleared.", font="Helvetica", non_blocking=True)
+            elif event == "folder_logs_audit":
+                logger.audit("f")
+                sg.popup_auto_close("Selected entries cleared.", font="Helvetica", non_blocking=True)
+            elif event == "vault_log_audit":
+                logger.audit("v")
+                sg.popup_auto_close("Selected entries cleared.", font="Helvetica", non_blocking=True)
+            elif event == "Clear_userlog":
+                logger.audit("a")
+                sg.popup_auto_close("Selected entries cleared.", font="Helvetica", non_blocking=True)
 
 
-main()
+app = Main
+app.intialize()
